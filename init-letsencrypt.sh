@@ -5,7 +5,7 @@ if ! [ -x "$(command -v docker)" ]; then
   exit 1
 fi
 
-domains=(vm-f0048e9a.na4u.ru)
+domains=(example.com)
 rsa_key_size=4096
 data_path="./data/certbot"
 email="example@mail.com" # Adding a valid address is strongly recommended

@@ -1,43 +1,57 @@
+name: llm-consultant
+
 services:
   proxy:
     build: ./proxy
     networks:
       - proxy-network
+    environment:
+      - LLM_CONSULTANT_WIDGET_DOMAIN=${LLM_CONSULTANT_WIDGET_DOMAIN}
+      - LLM_CONSULTANT_API_DOMAIN=${LLM_CONSULTANT_API_DOMAIN}
     volumes:
+      - ./proxy/templates:/etc/nginx/templates
       - ./data/certbot/conf:/etc/letsencrypt
       - ./data/certbot/www:/var/www/certbot
     ports:
-      - "80:80"
-      - "443:443"
-      - "8080:8080"
-    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+      - "${LLM_CONSULTANT_WIDGET_HTTP_PORT}:80"
+      - "${LLM_CONSULTANT_WIDGET_HTTPS_PORT}:443"
+      - "${LLM_CONSULTANT_API_PORT}:8080"
     depends_on:
-      backend:
+      api:
         condition: service_healthy
-      frontend:
+      widget:
         condition: service_started
   
-  frontend:
-    build: ./assistant-widget
+  widget:
+    build: ./llm-consultant-widget
     networks:
-      - backend-network
+      - api-network
       - proxy-network
-    environment:
-      ASSISTANT_BACKEND_TOKEN: "TOKEN"
-      ASSISTANT_BACKEND_PUBLIC_URL: "http://localhost:8080"
     depends_on:
-      backend:
+      api:
         condition: service_healthy
 
-  backend:
-    build: ./assistant-api
+  api:
+    build: ./llm-consultant-api
     networks:
       - chroma-network
       - database-network
-      - backend-network
+      - api-network
       - proxy-network
     environment:
-      OPENAI_API_KEY: "API_KEY"
+      - LLM_CONSULTANT_DOCKER=1
+    configs:
+      - widget_domain
+      - widget_http_port
+      - widget_https_port
+      - https
+    secrets:
+      - openai_api_key
+      - chroma_openai_api_key
+      - api_token
+      - database_user
+      - database_password
+      - database_name
     depends_on:
       database:
         condition: service_healthy
@@ -52,9 +66,9 @@ services:
       - database-network
     environment:
       MYSQL_ROOT_PASSWORD: "ROOT_PASSWORD"
-      MYSQL_DATABASE: "DATABASE"
-      MYSQL_USER: "USER"
-      MYSQL_PASSWORD: "PASSWORD"
+      MYSQL_DATABASE: "${LLM_CONSULTANT_DATABASE_NAME}"
+      MYSQL_USER: "${LLM_CONSULTANT_DATABASE_USER}"
+      MYSQL_PASSWORD: "${LLM_CONSULTANT_DATABASE_PASSWORD}"
     healthcheck:
       test: [ "CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "$$MYSQL_USER", "--password=$$MYSQL_PASSWORD" ]
       start_period: 15s
@@ -68,14 +82,40 @@ services:
       - chroma-data:/data
     networks:
       - chroma-network
-    ports:
-      - "8000:8000"
 
 networks:
-  database-network:
-  backend-network:
   proxy-network:
+  api-network:
+  database-network:
   chroma-network:
 
 volumes:
   chroma-data:
+
+configs:
+  widget_domain:
+    environment: "LLM_CONSULTANT_WIDGET_DOMAIN"
+  widget_http_port:
+    environment: "LLM_CONSULTANT_WIDGET_HTTP_PORT"
+  widget_https_port:
+    environment: "LLM_CONSULTANT_WIDGET_HTTPS_PORT"
+  api_domain:
+    environment: "LLM_CONSULTANT_API_DOMAIN"
+  api_port:
+    environment: "LLM_CONSULTANT_API_PORT"
+  https:
+    environment: "LLM_CONSULTANT_HTTPS"
+
+secrets:
+  openai_api_key:
+    environment: "OPENAI_API_KEY"
+  chroma_openai_api_key:
+    environment: "CHROMA_OPENAI_API_KEY"
+  api_token:
+    environment: "LLM_CONSULTANT_API_TOKEN"
+  database_user:
+    environment: "LLM_CONSULTANT_DATABASE_USER"
+  database_password:
+    environment: "LLM_CONSULTANT_DATABASE_PASSWORD"
+  database_name:
+    environment: "LLM_CONSULTANT_DATABASE_NAME"
